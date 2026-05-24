@@ -1,0 +1,29 @@
+# Build output
+bin/
+obj/
+TestResults/
+artifacts/
+publish/
+
+# Local runtime state
+.runtime/
+logs/
+*.log
+
+# Browser profiles and account state must never be committed.
+edge_profile/
+**/edge_profile/
+**/User Data/
+**/Network/Cookies*
+**/Cookies*
+**/Login Data*
+**/Local State
+
+# User/editor files
+.vs/
+.idea/
+*.user
+*.suo
+*.swp
+Thumbs.db
+Desktop.ini

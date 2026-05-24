@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AutoBingSearch.App/AutoBingSearch.App.csproj" />
+    <Project Path="src/AutoBingSearch.Core/AutoBingSearch.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AutoBingSearch.Tests/AutoBingSearch.Tests.csproj" />
+  </Folder>
+</Solution>
