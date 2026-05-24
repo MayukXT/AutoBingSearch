@@ -73,17 +73,22 @@ internal sealed class CommandRunner
 
     private void Install()
     {
-        if (!TryInstall(showSuccess: true))
+        if (!TryInstall(showSuccess: !HasSwitch("--quiet"), allowPrompts: !HasSwitch("--quiet")))
             Environment.ExitCode = 1;
     }
 
-    private bool TryInstall(bool showSuccess)
+    private bool TryInstall(bool showSuccess, bool allowPrompts = true)
     {
         try
         {
             var exePath = Environment.ProcessPath ?? Application.ExecutablePath;
             new StartupShortcutService().Register(exePath);
-            new TaskSchedulerService().RegisterAsync(_configStore.Load(), exePath).GetAwaiter().GetResult();
+
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(25));
+            new TaskSchedulerService()
+                .RegisterAsync(_configStore.Load(), exePath, timeout.Token)
+                .GetAwaiter()
+                .GetResult();
 
             if (showSuccess)
                 MessageBox.Show("Startup and scheduled tasks are registered.", "AutoBingSearch");
@@ -93,7 +98,7 @@ internal sealed class CommandRunner
         catch (Exception ex)
         {
             var scheduler = new TaskSchedulerService();
-            if (!scheduler.IsAdministrator())
+            if (allowPrompts && !scheduler.IsAdministrator())
             {
                 var ask = MessageBox.Show(
                     "Windows blocked scheduled task registration. Run as administrator now?",
@@ -108,13 +113,22 @@ internal sealed class CommandRunner
                 }
             }
 
-            MessageBox.Show(
-                $"AutoBingSearch could not register unattended startup:\n\n{ex.Message}",
-                "Setup failed",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Error);
+            if (allowPrompts)
+            {
+                MessageBox.Show(
+                    $"AutoBingSearch could not register unattended startup:\n\n{ex.Message}",
+                    "Setup failed",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+
             return false;
         }
+    }
+
+    private bool HasSwitch(string name)
+    {
+        return _args.Any(arg => string.Equals(arg, name, StringComparison.OrdinalIgnoreCase));
     }
 
     private void Uninstall()

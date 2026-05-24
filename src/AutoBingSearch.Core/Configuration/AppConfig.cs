@@ -2,6 +2,9 @@ namespace AutoBingSearch.Core.Configuration;
 
 public sealed class AppConfig
 {
+    public const int MinSearchCount = 1;
+    public const int MaxSearchCount = 100;
+
     public string SearchTime { get; set; } = "22:00";
     public string ReminderTime { get; set; } = "22:30";
     public int SearchCount { get; set; } = 30;
@@ -16,7 +19,7 @@ public sealed class AppConfig
     {
         SearchTime = NormalizeTime(SearchTime, "22:00");
         ReminderTime = NormalizeTime(ReminderTime, "22:30");
-        SearchCount = Math.Clamp(SearchCount, 1, 30);
+        SearchCount = Math.Clamp(SearchCount, MinSearchCount, MaxSearchCount);
         DelayMinSeconds = Math.Clamp(DelayMinSeconds, 1, 300);
         DelayMaxSeconds = Math.Clamp(DelayMaxSeconds, DelayMinSeconds + 1, 300);
         SessionMaxMinutes = Math.Clamp(SessionMaxMinutes, 3, 180);

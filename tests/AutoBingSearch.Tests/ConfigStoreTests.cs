@@ -45,4 +45,30 @@ public sealed class ConfigStoreTests
         Assert.Equal("Profile 1", loaded.Browser.ProfileName);
         Assert.DoesNotContain("%LOCALAPPDATA%", loaded.Browser.UserDataDir);
     }
+
+    [Fact]
+    public void Save_AllowsSearchCountsAboveThirty()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        var path = Path.Combine(dir, "config.json");
+        var store = new ConfigStore(path);
+
+        store.Save(new AppConfig { SearchCount = 45 });
+        var loaded = store.Load();
+
+        Assert.Equal(45, loaded.SearchCount);
+    }
+
+    [Fact]
+    public void Save_ClampsSearchCountsToConfiguredMaximum()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        var path = Path.Combine(dir, "config.json");
+        var store = new ConfigStore(path);
+
+        store.Save(new AppConfig { SearchCount = AppConfig.MaxSearchCount + 20 });
+        var loaded = store.Load();
+
+        Assert.Equal(AppConfig.MaxSearchCount, loaded.SearchCount);
+    }
 }

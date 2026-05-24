@@ -3,6 +3,7 @@ using AutoBingSearch.Core.Configuration;
 using AutoBingSearch.Core.Scheduling;
 using AutoBingSearch.Core.Search;
 using AutoBingSearch.Core.Startup;
+using System.Globalization;
 
 namespace AutoBingSearch.App.Forms;
 
@@ -79,8 +80,8 @@ internal sealed class SettingsForm : Form
         AddControl(_reminderTime, y);
         y += 42;
         AddLabel("Daily searches", y);
-        _searchCount.Minimum = 1;
-        _searchCount.Maximum = 30;
+        _searchCount.Minimum = AppConfig.MinSearchCount;
+        _searchCount.Maximum = AppConfig.MaxSearchCount;
         AddControl(_searchCount, y);
         y += 42;
         AddLabel("Minimum delay", y);
@@ -184,6 +185,7 @@ internal sealed class SettingsForm : Form
         AppTheme.SetButtonState(_save, enabled: false, primary: true);
 
         _store.Save(config);
+        ApplyCommittedConfig(config);
         _savedSnapshot = SnapshotFromControls();
 
         try
@@ -235,9 +237,16 @@ internal sealed class SettingsForm : Form
         config.Browser = profile.ToSelection();
         config.SearchTime = searchTime.ToString("HH:mm");
         config.ReminderTime = reminderTime.ToString("HH:mm");
-        config.SearchCount = (int)_searchCount.Value;
-        config.DelayMinSeconds = (double)_delayMin.Value;
-        config.DelayMaxSeconds = (double)_delayMax.Value;
+        if (!TryReadInteger(_searchCount, "Daily searches", out var searchCount) ||
+            !TryReadNumber(_delayMin, "Minimum delay", out var delayMin) ||
+            !TryReadNumber(_delayMax, "Maximum delay", out var delayMax))
+        {
+            return false;
+        }
+
+        config.SearchCount = searchCount;
+        config.DelayMinSeconds = delayMin;
+        config.DelayMaxSeconds = delayMax;
         config.SearchEnabled = _searchEnabled.Checked;
         config.ReminderEnabled = _reminderEnabled.Checked;
         return true;
@@ -298,6 +307,18 @@ internal sealed class SettingsForm : Form
         MessageBox.Show("Copied browser profile reset. The next run will copy it again.", "AutoBingSearch");
     }
 
+    private void ApplyCommittedConfig(AppConfig config)
+    {
+        _searchTime.Text = config.SearchTime;
+        _reminderTime.Text = config.ReminderTime;
+        _searchCount.Value = config.SearchCount;
+        _searchCount.Text = config.SearchCount.ToString(CultureInfo.CurrentCulture);
+        _delayMin.Value = (decimal)config.DelayMinSeconds;
+        _delayMin.Text = config.DelayMinSeconds.ToString(CultureInfo.CurrentCulture);
+        _delayMax.Value = (decimal)config.DelayMaxSeconds;
+        _delayMax.Text = config.DelayMaxSeconds.ToString(CultureInfo.CurrentCulture);
+    }
+
     private void UpdateProfileSummary()
     {
         if (_browserBox.SelectedItem is not BrowserProfile profile)
@@ -316,8 +337,11 @@ internal sealed class SettingsForm : Form
         _browserBox.SelectedIndexChanged += (_, _) => UpdateSaveState();
         _searchTime.TextChanged += (_, _) => UpdateSaveState();
         _reminderTime.TextChanged += (_, _) => UpdateSaveState();
+        _searchCount.TextChanged += (_, _) => UpdateSaveState();
         _searchCount.ValueChanged += (_, _) => UpdateSaveState();
+        _delayMin.TextChanged += (_, _) => UpdateSaveState();
         _delayMin.ValueChanged += (_, _) => UpdateSaveState();
+        _delayMax.TextChanged += (_, _) => UpdateSaveState();
         _delayMax.ValueChanged += (_, _) => UpdateSaveState();
         _searchEnabled.CheckedChanged += (_, _) => UpdateSaveState();
         _reminderEnabled.CheckedChanged += (_, _) => UpdateSaveState();
@@ -349,11 +373,54 @@ internal sealed class SettingsForm : Form
             selectedProfile?.ProfileName ?? "",
             _searchTime.Text.Trim(),
             _reminderTime.Text.Trim(),
-            (int)_searchCount.Value,
-            (double)_delayMin.Value,
-            (double)_delayMax.Value,
+            _searchCount.Text.Trim(),
+            _delayMin.Text.Trim(),
+            _delayMax.Text.Trim(),
             _searchEnabled.Checked,
             _reminderEnabled.Checked);
+    }
+
+    private static bool TryReadInteger(NumericUpDown control, string label, out int value)
+    {
+        value = 0;
+        var text = control.Text.Trim();
+        if (!int.TryParse(text, NumberStyles.Integer, CultureInfo.CurrentCulture, out value))
+        {
+            MessageBox.Show($"{label} must be a whole number.", "Invalid settings");
+            return false;
+        }
+
+        if (value < control.Minimum || value > control.Maximum)
+        {
+            MessageBox.Show(
+                $"{label} must be between {control.Minimum:0} and {control.Maximum:0}.",
+                "Invalid settings");
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool TryReadNumber(NumericUpDown control, string label, out double value)
+    {
+        value = 0;
+        var text = control.Text.Trim();
+        if (!decimal.TryParse(text, NumberStyles.Number, CultureInfo.CurrentCulture, out var parsed))
+        {
+            MessageBox.Show($"{label} must be a number.", "Invalid settings");
+            return false;
+        }
+
+        if (parsed < control.Minimum || parsed > control.Maximum)
+        {
+            MessageBox.Show(
+                $"{label} must be between {control.Minimum:0} and {control.Maximum:0}.",
+                "Invalid settings");
+            return false;
+        }
+
+        value = (double)parsed;
+        return true;
     }
 
     private sealed record SettingsSnapshot(
@@ -361,12 +428,12 @@ internal sealed class SettingsForm : Form
         string ProfileName,
         string SearchTime,
         string ReminderTime,
-        int SearchCount,
-        double DelayMinSeconds,
-        double DelayMaxSeconds,
+        string SearchCount,
+        string DelayMinSeconds,
+        string DelayMaxSeconds,
         bool SearchEnabled,
         bool ReminderEnabled)
     {
-        public static SettingsSnapshot Empty { get; } = new("", "", "", "", 0, 0, 0, false, false);
+        public static SettingsSnapshot Empty { get; } = new("", "", "", "", "", "", "", false, false);
     }
 }
