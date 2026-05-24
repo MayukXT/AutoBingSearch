@@ -9,6 +9,7 @@ internal static class AppTheme
     public static readonly Color Border = Color.FromArgb(218, 216, 210);
     public static readonly Color Primary = Color.FromArgb(20, 20, 20);
     public static readonly Color PrimaryText = Color.White;
+    public static readonly Color Disabled = Color.FromArgb(226, 224, 218);
     public static readonly Font TitleFont = new("Bahnschrift", 18, FontStyle.Bold);
     public static readonly Font BodyFont = new("Candara", 10.5f, FontStyle.Regular);
     public static readonly Font ButtonFont = new("Bahnschrift", 10.5f, FontStyle.Bold);
@@ -33,5 +34,19 @@ internal static class AppTheme
         };
         button.FlatAppearance.BorderColor = primary ? Primary : Border;
         return button;
+    }
+
+    public static void SetButtonState(Button button, bool enabled, bool primary = false)
+    {
+        button.Enabled = enabled;
+        button.BackColor = enabled
+            ? primary ? Primary : Panel
+            : Disabled;
+        button.ForeColor = enabled
+            ? primary ? PrimaryText : Text
+            : Muted;
+        button.FlatAppearance.BorderColor = enabled
+            ? primary ? Primary : Border
+            : Border;
     }
 }

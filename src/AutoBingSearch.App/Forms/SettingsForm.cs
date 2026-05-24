@@ -20,6 +20,11 @@ internal sealed class SettingsForm : Form
     private readonly NumericUpDown _delayMax = new();
     private readonly CheckBox _searchEnabled = new();
     private readonly CheckBox _reminderEnabled = new();
+    private readonly Button _save = AppTheme.Button("Save", primary: true);
+    private readonly Label _status = new();
+    private SettingsSnapshot _savedSnapshot = SettingsSnapshot.Empty;
+    private bool _loading;
+    private bool _saving;
 
     public SettingsForm(ConfigStore store)
     {
@@ -99,22 +104,29 @@ internal sealed class SettingsForm : Form
         _reminderEnabled.Size = new Size(250, 28);
         Controls.Add(_reminderEnabled);
 
+        _status.Font = AppTheme.BodyFont;
+        _status.ForeColor = AppTheme.Muted;
+        _status.Location = new Point(30, 468);
+        _status.Size = new Size(490, 24);
+        Controls.Add(_status);
+
         var reset = AppTheme.Button("Reset copied browser profile");
         reset.Location = new Point(30, 430);
         reset.Size = new Size(210, 38);
         reset.Click += (_, _) => ResetProfile();
 
-        var save = AppTheme.Button("Save", primary: true);
-        save.Location = new Point(410, 430);
-        save.Size = new Size(110, 38);
-        save.Click += (_, _) => Save();
+        _save.Location = new Point(410, 430);
+        _save.Size = new Size(110, 38);
+        _save.Click += async (_, _) => await SaveAsync();
 
         var cancel = AppTheme.Button("Cancel");
         cancel.Location = new Point(280, 430);
         cancel.Size = new Size(110, 38);
         cancel.Click += (_, _) => Close();
 
-        Controls.AddRange([reset, cancel, save]);
+        Controls.AddRange([reset, cancel, _save]);
+        WireChangeTracking();
+        UpdateSaveState();
     }
 
     private void AddLabel(string text, int y)
@@ -139,6 +151,7 @@ internal sealed class SettingsForm : Form
 
     private void LoadValues()
     {
+        _loading = true;
         var config = _store.Load();
         _searchTime.Text = config.SearchTime;
         _reminderTime.Text = config.ReminderTime;
@@ -152,31 +165,73 @@ internal sealed class SettingsForm : Form
             p.Browser.Id == config.Browser.BrowserId);
         _browserBox.SelectedItem = match ?? _browserChoices.FirstOrDefault();
         UpdateProfileSummary();
+        _savedSnapshot = SnapshotFromControls();
+        _loading = false;
+        UpdateSaveState();
     }
 
-    private void Save()
+    private async Task SaveAsync()
     {
+        if (_saving || !HasUnsavedChanges())
+            return;
+
+        if (!TryBuildConfig(showErrors: true, out var config))
+            return;
+
+        _saving = true;
+        _save.Text = "Saving...";
+        _status.Text = "Saving settings...";
+        AppTheme.SetButtonState(_save, enabled: false, primary: true);
+
+        _store.Save(config);
+        _savedSnapshot = SnapshotFromControls();
+
+        try
+        {
+            await UpdateWindowsRegistrationAsync(config);
+            _status.Text = "Saved. Schedule updated.";
+        }
+        catch (Exception ex)
+        {
+            HandleScheduleRegistrationError(ex);
+        }
+        finally
+        {
+            _saving = false;
+            _save.Text = "Save";
+            UpdateSaveState();
+        }
+    }
+
+    private bool TryBuildConfig(bool showErrors, out AppConfig config)
+    {
+        config = _store.Load();
+
         if (!TimeOnly.TryParse(_searchTime.Text, out var searchTime) ||
             !TimeOnly.TryParse(_reminderTime.Text, out var reminderTime))
         {
-            MessageBox.Show("Use HH:mm time format.", "Invalid settings");
-            return;
+            if (showErrors)
+                MessageBox.Show("Use HH:mm time format.", "Invalid settings");
+            return false;
         }
 
         if (_browserBox.SelectedItem is not BrowserProfile profile)
-            return;
+            return false;
 
         if (profile.IsGuest)
         {
-            MessageBox.Show(
-                "Only a Guest profile was found for this browser. Sign into Bing in a normal profile first, then try again.",
-                "Signed-in profile required",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Warning);
-            return;
+            if (showErrors)
+            {
+                MessageBox.Show(
+                    "Only a Guest profile was found for this browser. Sign into Bing in a normal profile first, then try again.",
+                    "Signed-in profile required",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
+
+            return false;
         }
 
-        var config = _store.Load();
         config.Browser = profile.ToSelection();
         config.SearchTime = searchTime.ToString("HH:mm");
         config.ReminderTime = reminderTime.ToString("HH:mm");
@@ -185,41 +240,56 @@ internal sealed class SettingsForm : Form
         config.DelayMaxSeconds = (double)_delayMax.Value;
         config.SearchEnabled = _searchEnabled.Checked;
         config.ReminderEnabled = _reminderEnabled.Checked;
-        _store.Save(config);
+        return true;
+    }
 
-        try
+    private static async Task UpdateWindowsRegistrationAsync(AppConfig config)
+    {
+        var exe = Environment.ProcessPath ?? Application.ExecutablePath;
+        new StartupShortcutService().Register(exe);
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(25));
+        await Task.Run(
+            () => new TaskSchedulerService().RegisterAsync(config, exe, timeout.Token),
+            timeout.Token);
+    }
+
+    private void HandleScheduleRegistrationError(Exception ex)
+    {
+        if (ex is OperationCanceledException)
         {
-            var exe = Environment.ProcessPath ?? Application.ExecutablePath;
-            new StartupShortcutService().Register(exe);
-            new TaskSchedulerService().RegisterAsync(config, exe).GetAwaiter().GetResult();
-        }
-        catch (Exception ex)
-        {
-            var scheduler = new TaskSchedulerService();
-            if (!scheduler.IsAdministrator())
-            {
-                var ask = MessageBox.Show(
-                    "Settings were saved, but Windows blocked scheduled task registration. Run as administrator now?",
-                    "AutoBingSearch needs permission",
-                    MessageBoxButtons.YesNo,
-                    MessageBoxIcon.Question);
-
-                if (ask == DialogResult.Yes)
-                {
-                    scheduler.RelaunchElevated(Environment.ProcessPath ?? Application.ExecutablePath, "--install");
-                    Close();
-                    return;
-                }
-            }
-
+            _status.Text = "Saved, but schedule update timed out.";
             MessageBox.Show(
-                $"Settings were saved, but scheduled tasks were not updated.\n\n{ex.Message}",
-                "Task Scheduler",
+                "Settings were saved, but Windows Task Scheduler did not respond in time. Try Save again, or run the app as administrator if Windows keeps blocking the update.",
+                "Task Scheduler timeout",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);
+            return;
         }
 
-        Close();
+        var scheduler = new TaskSchedulerService();
+        if (!scheduler.IsAdministrator())
+        {
+            var ask = MessageBox.Show(
+                "Settings were saved, but Windows blocked scheduled task registration. Run as administrator now?",
+                "AutoBingSearch needs permission",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+
+            if (ask == DialogResult.Yes)
+            {
+                scheduler.RelaunchElevated(Environment.ProcessPath ?? Application.ExecutablePath, "--install");
+                _status.Text = "Saved. Administrator setup opened.";
+                return;
+            }
+        }
+
+        _status.Text = "Saved, but schedule was not updated.";
+        MessageBox.Show(
+            $"Settings were saved, but scheduled tasks were not updated.\n\n{ex.Message}",
+            "Task Scheduler",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Warning);
     }
 
     private void ResetProfile()
@@ -239,5 +309,64 @@ internal sealed class SettingsForm : Form
         _profileSummary.Text = profile.IsGuest
             ? "No normal signed-in profile found."
             : $"Profile: {profile.DisplayName}";
+    }
+
+    private void WireChangeTracking()
+    {
+        _browserBox.SelectedIndexChanged += (_, _) => UpdateSaveState();
+        _searchTime.TextChanged += (_, _) => UpdateSaveState();
+        _reminderTime.TextChanged += (_, _) => UpdateSaveState();
+        _searchCount.ValueChanged += (_, _) => UpdateSaveState();
+        _delayMin.ValueChanged += (_, _) => UpdateSaveState();
+        _delayMax.ValueChanged += (_, _) => UpdateSaveState();
+        _searchEnabled.CheckedChanged += (_, _) => UpdateSaveState();
+        _reminderEnabled.CheckedChanged += (_, _) => UpdateSaveState();
+    }
+
+    private void UpdateSaveState()
+    {
+        if (_loading || _saving)
+            return;
+
+        var hasChanges = HasUnsavedChanges();
+        AppTheme.SetButtonState(_save, hasChanges, primary: true);
+        if (hasChanges)
+            _status.Text = "Unsaved changes";
+        else if (_status.Text == "Unsaved changes")
+            _status.Text = "";
+    }
+
+    private bool HasUnsavedChanges()
+    {
+        return SnapshotFromControls() != _savedSnapshot;
+    }
+
+    private SettingsSnapshot SnapshotFromControls()
+    {
+        var selectedProfile = _browserBox.SelectedItem as BrowserProfile;
+        return new SettingsSnapshot(
+            selectedProfile?.Browser.Id ?? "",
+            selectedProfile?.ProfileName ?? "",
+            _searchTime.Text.Trim(),
+            _reminderTime.Text.Trim(),
+            (int)_searchCount.Value,
+            (double)_delayMin.Value,
+            (double)_delayMax.Value,
+            _searchEnabled.Checked,
+            _reminderEnabled.Checked);
+    }
+
+    private sealed record SettingsSnapshot(
+        string BrowserId,
+        string ProfileName,
+        string SearchTime,
+        string ReminderTime,
+        int SearchCount,
+        double DelayMinSeconds,
+        double DelayMaxSeconds,
+        bool SearchEnabled,
+        bool ReminderEnabled)
+    {
+        public static SettingsSnapshot Empty { get; } = new("", "", "", "", 0, 0, 0, false, false);
     }
 }

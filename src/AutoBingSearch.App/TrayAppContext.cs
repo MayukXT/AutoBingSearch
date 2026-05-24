@@ -14,12 +14,14 @@ internal sealed class TrayAppContext : ApplicationContext
     private readonly RunStateStore _runState = new();
     private readonly NotifyIcon _icon;
     private readonly System.Windows.Forms.Timer _startupTimer;
+    private readonly SynchronizationContext _uiContext;
     private bool _running;
 
     public TrayAppContext(ConfigStore store, AppLogger log)
     {
         _store = store;
         _log = log;
+        _uiContext = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
         _icon = new NotifyIcon
         {
             Icon = AppTheme.LoadAppIcon(),
@@ -52,11 +54,22 @@ internal sealed class TrayAppContext : ApplicationContext
         menu.Items.Add("Test 3 searches", null, async (_, _) => await RunSearchAsync(testMode: true));
         menu.Items.Add("Show reminder", null, (_, _) => new ReminderForm().Show());
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Settings", null, (_, _) => new SettingsForm(_store).ShowDialog());
+        menu.Items.Add("Settings", null, (_, _) => OpenSettings(menu));
         menu.Items.Add("Open logs", null, (_, _) => System.Diagnostics.Process.Start("explorer.exe", AppPaths.LogDirectory));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Exit", null, (_, _) => ExitThread());
         return menu;
+    }
+
+    private void OpenSettings(ContextMenuStrip menu)
+    {
+        menu.Close(ToolStripDropDownCloseReason.ItemClicked);
+        _uiContext.Post(_ =>
+        {
+            using var form = new SettingsForm(_store);
+            form.ShowDialog();
+            _icon.Text = Tooltip();
+        }, null);
     }
 
     private async Task RunSearchAsync(bool testMode)

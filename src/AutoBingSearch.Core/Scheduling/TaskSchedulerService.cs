@@ -96,15 +96,24 @@ public sealed class TaskSchedulerService
             RedirectStandardError = true
         }) ?? throw new InvalidOperationException("Could not start PowerShell.");
 
-        var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-        var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
-        await process.WaitForExitAsync(cancellationToken);
-        if (process.ExitCode == 0)
-            return;
+        try
+        {
+            var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+            var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
+            await process.WaitForExitAsync(cancellationToken);
 
-        var error = await errorTask;
-        var output = await outputTask;
-        throw new InvalidOperationException((error + output).Trim());
+            var output = await outputTask;
+            var error = await errorTask;
+            if (process.ExitCode == 0)
+                return;
+
+            throw new InvalidOperationException((error + output).Trim());
+        }
+        catch (OperationCanceledException) when (!process.HasExited)
+        {
+            process.Kill(entireProcessTree: true);
+            throw;
+        }
     }
 
     private static string EscapePowerShell(string value) => value.Replace("'", "''");
