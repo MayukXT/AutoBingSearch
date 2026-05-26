@@ -33,14 +33,14 @@ internal sealed class ReminderForm : Form
     public ReminderForm()
     {
         Text = "AutoBingSearch Reminder";
-        StartPosition = FormStartPosition.Manual;
+        StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.None;
         ShowInTaskbar = false;
         TopMost = true;
         KeyPreview = true;
         DoubleBuffered = true;
         BackColor = Color.FromArgb(6, 7, 8);
-        Bounds = SystemInformation.VirtualScreen;
+        ClientSize = new Size(640, 430);
         Cursor = Cursors.Default;
 
         _countdownTimer.Interval = 1000;
@@ -58,7 +58,7 @@ internal sealed class ReminderForm : Form
     protected override void OnShown(EventArgs e)
     {
         base.OnShown(e);
-        Bounds = SystemInformation.VirtualScreen;
+        CenterOnCurrentScreen();
         KeepOverlayInFront();
     }
 
@@ -95,6 +95,7 @@ internal sealed class ReminderForm : Form
     protected override void OnResize(EventArgs e)
     {
         base.OnResize(e);
+        ApplyWindowShape();
         LayoutOverlay();
         Invalidate();
     }
@@ -166,20 +167,20 @@ internal sealed class ReminderForm : Form
 
     private void LayoutOverlay()
     {
-        var width = Math.Min(760, Math.Max(560, ClientSize.Width - 96));
-        var height = Math.Min(470, Math.Max(430, ClientSize.Height - 96));
+        var width = Math.Max(560, ClientSize.Width - 28);
+        var height = Math.Max(390, ClientSize.Height - 28);
         var x = (ClientSize.Width - width) / 2f;
         var y = (ClientSize.Height - height) / 2f;
         var eased = EaseOutCubic(_introProgress);
-        var introOffset = (1f - eased) * 18f;
+        var introOffset = (1f - eased) * 10f;
 
         _cardBounds = new RectangleF(x, y + introOffset, width, height);
 
-        var buttonTop = _cardBounds.Bottom - 92;
+        var buttonTop = _cardBounds.Bottom - 82;
         var buttonGap = 16;
         var buttonWidth = (_cardBounds.Width - 96 - buttonGap) / 2f;
-        _acknowledgeBounds = new RectangleF(_cardBounds.Left + 48, buttonTop, buttonWidth, 54);
-        _confirmBounds = new RectangleF(_acknowledgeBounds.Right + buttonGap, buttonTop, buttonWidth, 54);
+        _acknowledgeBounds = new RectangleF(_cardBounds.Left + 48, buttonTop, buttonWidth, 50);
+        _confirmBounds = new RectangleF(_acknowledgeBounds.Right + buttonGap, buttonTop, buttonWidth, 50);
     }
 
     private void PaintBackdrop(Graphics g)
@@ -194,7 +195,7 @@ internal sealed class ReminderForm : Form
             LinearGradientMode.ForwardDiagonal);
         g.FillRectangle(radial, ClientRectangle);
 
-        using var linePen = new Pen(Color.FromArgb(18, 245, 239, 226), 1);
+        using var linePen = new Pen(Color.FromArgb(14, 245, 239, 226), 1);
         for (var x = -ClientSize.Height; x < ClientSize.Width; x += 42)
             g.DrawLine(linePen, x, ClientSize.Height, x + ClientSize.Height, 0);
     }
@@ -203,17 +204,11 @@ internal sealed class ReminderForm : Form
     {
         LayoutOverlay();
 
-        var shadowBounds = _cardBounds;
-        shadowBounds.Offset(0, 18);
-        using (var shadowPath = RoundedRect(shadowBounds, 34))
-        using (var shadow = new SolidBrush(Color.FromArgb(120, 0, 0, 0)))
-            g.FillPath(shadow, shadowPath);
-
         using var path = RoundedRect(_cardBounds, 34);
         using var cardBrush = new LinearGradientBrush(
             _cardBounds,
-            Color.FromArgb(246, 13, 15, 15),
-            Color.FromArgb(246, 22, 24, 23),
+            Color.FromArgb(252, 13, 15, 15),
+            Color.FromArgb(252, 22, 24, 23),
             LinearGradientMode.Vertical);
         g.FillPath(cardBrush, path);
 
@@ -227,27 +222,27 @@ internal sealed class ReminderForm : Form
     {
         var pad = 48f;
         var left = _cardBounds.Left + pad;
-        var top = _cardBounds.Top + 42;
+        var top = _cardBounds.Top + 36;
         var right = _cardBounds.Right - pad;
         var contentWidth = right - left;
         var progress = _acknowledged ? 1f - Math.Clamp(_remainingSeconds / 10f, 0f, 1f) : 0f;
 
         DrawText(g, "REWARDS CHECK-IN", _eyebrowFont, Color.FromArgb(173, 230, 214), new RectangleF(left, top, contentWidth, 24), StringAlignment.Near);
-        DrawText(g, "Bing searches are due.", _titleFont, Color.FromArgb(250, 247, 239), new RectangleF(left, top + 44, contentWidth, 48), StringAlignment.Near);
+        DrawText(g, "Bing searches are due.", _titleFont, Color.FromArgb(250, 247, 239), new RectangleF(left, top + 40, contentWidth, 48), StringAlignment.Near);
         DrawText(
             g,
             "This reminder stays on screen until you acknowledge it, wait ten seconds, and confirm that it can be cleared.",
             _bodyFont,
             Color.FromArgb(219, 211, 198),
-            new RectangleF(left, top + 108, contentWidth - 30, 78),
+            new RectangleF(left, top + 100, contentWidth - 20, 76),
             StringAlignment.Near);
 
         var statusText = _acknowledged
             ? _remainingSeconds > 0 ? $"Confirmation unlocks in {_remainingSeconds}s" : "Confirmation is ready"
             : "Action required before this overlay can close";
-        DrawText(g, statusText, _metaFont, Color.FromArgb(186, 247, 223), new RectangleF(left, top + 204, contentWidth, 28), StringAlignment.Near);
+        DrawText(g, statusText, _metaFont, Color.FromArgb(186, 247, 223), new RectangleF(left, top + 190, contentWidth, 28), StringAlignment.Near);
 
-        var rail = new RectangleF(left, top + 246, contentWidth, 7);
+        var rail = new RectangleF(left, top + 228, contentWidth, 7);
         using (var railPath = RoundedRect(rail, 4))
         using (var railBrush = new SolidBrush(Color.FromArgb(58, 255, 255, 255)))
             g.FillPath(railBrush, railPath);
@@ -348,11 +343,33 @@ internal sealed class ReminderForm : Form
             return;
 
         TopMost = true;
-        Bounds = SystemInformation.VirtualScreen;
+        if (WindowState == FormWindowState.Minimized)
+            WindowState = FormWindowState.Normal;
+
         SetWindowPos(Handle, HwndTopMost, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpShowWindow);
         BringToFront();
         Activate();
         Focus();
+    }
+
+    private void CenterOnCurrentScreen()
+    {
+        var area = Screen.FromPoint(Cursor.Position).WorkingArea;
+        Location = new Point(
+            area.Left + (area.Width - Width) / 2,
+            area.Top + (area.Height - Height) / 2);
+    }
+
+    private void ApplyWindowShape()
+    {
+        if (ClientSize.Width <= 0 || ClientSize.Height <= 0)
+            return;
+
+        using var path = RoundedRect(new RectangleF(0, 0, ClientSize.Width, ClientSize.Height), 30);
+        var nextRegion = new Region(path);
+        var oldRegion = Region;
+        Region = nextRegion;
+        oldRegion?.Dispose();
     }
 
     private static bool IsBlockedShortcut(Keys keyData)
