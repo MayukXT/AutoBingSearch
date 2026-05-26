@@ -39,7 +39,19 @@ dotnet run --project src/AutoBingSearch.App -- --reminder
 
 `--install` registers the tray startup shortcut and Windows scheduled tasks. If Windows denies task registration, the app asks for UAC elevation. If elevation is declined, it does not silently claim setup worked.
 
-## Install or Update
+## Install on a New PC
+
+Build a distributable installer zip from this repo:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\build-installer.ps1 -Version dev
+```
+
+Copy `artifacts\installer\AutoBingSearch-Installer-dev-win-x64.zip` to the target PC, extract it, then double-click `Install-AutoBingSearch.cmd`.
+
+The installer is self-contained. The target PC does not need the AutoBingSearch repo, .NET SDK, or .NET runtime installed.
+
+## Update From Source
 
 For normal use, install the app into a stable per-user location:
 
@@ -47,7 +59,7 @@ For normal use, install the app into a stable per-user location:
 powershell -ExecutionPolicy Bypass -File tools\install.ps1
 ```
 
-The installer publishes the latest build, stops any old tray process, installs to `%LOCALAPPDATA%\Programs\AutoBingSearch`, refreshes startup and scheduled tasks, creates a Start Menu shortcut, and starts the tray app again. Use `-Setup` to force the first-run browser setup screen again.
+This source update script publishes the latest local build, stops any old tray process, installs to `%LOCALAPPDATA%\Programs\AutoBingSearch`, refreshes startup and scheduled tasks, creates a Start Menu shortcut, and starts the tray app again. Use `-Setup` to force the first-run browser setup screen again.
 
 ## Features
 
