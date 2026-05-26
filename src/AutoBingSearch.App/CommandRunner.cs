@@ -33,7 +33,7 @@ internal sealed class CommandRunner
                 RunSearch(testMode: true);
                 break;
             case "--reminder":
-                Application.Run(new ReminderForm());
+                RunReminder();
                 break;
             case "--install":
                 Install();
@@ -60,6 +60,15 @@ internal sealed class CommandRunner
             return;
 
         Application.Run(new TrayAppContext(_configStore, _log));
+    }
+
+    private void RunReminder()
+    {
+        using var reminderLock = new Mutex(initiallyOwned: true, "AutoBingSearch.Reminder", out var ownsReminder);
+        if (!ownsReminder)
+            return;
+
+        Application.Run(new ReminderForm());
     }
 
     private void RunSetup()
